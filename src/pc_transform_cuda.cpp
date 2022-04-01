@@ -51,7 +51,7 @@ void PcTransform::callback(const sensor_msgs::PointCloud2ConstPtr &msg)
 	sensor_msgs::PointCloud pc1;
 	sensor_msgs::convertPointCloud2ToPointCloud(*msg, pc1);
 
-	cudaProcess(pc1, x_m_, y_m_, z_m_, r_deg_, p_deg_, y_deg_);
+	transformPc(pc1, x_m_, y_m_, z_m_, r_deg_, p_deg_, y_deg_);
 
 	sensor_msgs::PointCloud2 pc2;
 	sensor_msgs::convertPointCloudToPointCloud2(pc1, pc2);

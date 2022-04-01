@@ -27,21 +27,30 @@ RUN echo 'function cmk(){ \n\
 		OLDPWD=$lastpwd \n\
         }' >> ~/.bashrc
 ########## pc_transform_cuda ##########
+## dependencies
 RUN apt-get update && \
     apt-get install -y \
 		libpcl-dev \
 		ros-noetic-pcl-conversions \
 		ros-noetic-rviz \
 		nvidia-cuda-toolkit && \
-	cd ~/catkin_ws/src
-	# git clone https://github.com/ozakiryota/pc_transform_cuda.git && \
-	# cd ~/catkin_ws/ && \
-	# /bin/bash -c "source /opt/ros/noetic/setup.bash; catkin_make"
-RUN apt-get remove -y gcc && \
+	apt-get remove -y gcc && \
 	ln -s /usr/bin/gcc-8 /usr/bin/gcc && \
 	ln -s /usr/bin/g++-8 /usr/bin/g++ && \
 	ln -s /usr/bin/gcc-8 /usr/bin/cc && \
 	ln -s /usr/bin/g++-8 /usr/bin/c++
+## cache busting
+ARG CACHEBUST=1
+## build
+RUN cd ~/catkin_ws/src && \
+	git clone https://github.com/ozakiryota/pc_transform_cuda.git && \
+	cd ~/catkin_ws/ && \
+	/bin/bash -c "source /opt/ros/noetic/setup.bash; catkin_make"
+########## dummy_msg_publication ##########
+RUN cd ~/catkin_ws/src && \
+	git clone https://github.com/ozakiryota/dummy_msg_publication.git && \
+	cd ~/catkin_ws/ && \
+	/bin/bash -c "source /opt/ros/noetic/setup.bash; catkin_make"
 ########## Velodyne driver ##########
 RUN apt-get update && \
 	apt-get install -y \
