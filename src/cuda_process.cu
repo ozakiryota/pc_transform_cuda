@@ -1,4 +1,5 @@
 #include <iostream>
+#include <assert.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <sensor_msgs/point_field_conversion.h>
 
@@ -13,6 +14,24 @@ typedef struct{
 		m01, m11, m21,
 		m02, m12, m22;
 }Mat;
+
+inline cudaError_t checkCudaError(cudaError_t result)
+{
+	if (result != cudaSuccess) {
+		fprintf(stderr, "CUDA Runtime Error: %s\n", cudaGetErrorString(result));
+		assert(result == cudaSuccess);
+	}
+	return result;
+}
+
+inline void checkCudaKernelError(void)
+{
+	cudaError_t kernel_error = cudaGetLastError();
+	if (kernel_error != cudaSuccess) {
+		fprintf(stderr, "CUDA Runtime Error: %s\n", cudaGetErrorString(kernel_error));
+		assert(kernel_error == cudaSuccess);
+	}
+}
 
 void pcRosToPtr(const sensor_msgs::PointCloud2& pc_ros, Point* pc_ptr){
 	int x_idx, y_idx, z_idx;
@@ -92,30 +111,31 @@ void transformPc(sensor_msgs::PointCloud2& pc_ros, float x_m, float y_m, float z
 {
 	/*device query*/
 	int device_id;
-	cudaGetDevice(&device_id);
+	checkCudaError( cudaGetDevice(&device_id) );
 	int num_sm;
-	cudaDeviceGetAttribute(&num_sm, cudaDevAttrMultiProcessorCount, device_id);
+	checkCudaError( cudaDeviceGetAttribute(&num_sm, cudaDevAttrMultiProcessorCount, device_id) );
 
 	/*memory setting*/
 	int num_points = pc_ros.height * pc_ros.width;
 	int bytes = num_points * sizeof(Point);
 	Point* pc_ptr;
-	cudaMallocManaged(&pc_ptr, bytes);
-	cudaMemPrefetchAsync(pc_ptr, bytes, device_id);
+	checkCudaError( cudaMallocManaged(&pc_ptr, bytes) );
+	checkCudaError( cudaMemPrefetchAsync(pc_ptr, bytes, device_id) );
 
 	/*cpu*/
 	pcRosToPtr(pc_ros, pc_ptr);
 
-	// /*gpu*/
+	/*gpu*/
 	int num_blocks = num_sm * 32;
 	int threads_per_block = 1024;
 	transformPcCuda<<<num_blocks, threads_per_block>>>(pc_ptr, num_points, x_m, y_m, z_m, getRotMatrix(r_deg, p_deg, y_deg));
-	cudaDeviceSynchronize();
+	checkCudaKernelError();
+	checkCudaError( cudaDeviceSynchronize() );
 
-	// /*cpu*/
-	cudaMemPrefetchAsync(pc_ptr, bytes, cudaCpuDeviceId);
+	/*cpu*/
+	checkCudaError( cudaMemPrefetchAsync(pc_ptr, bytes, cudaCpuDeviceId) );
 	pcPtrToRos(pc_ptr, pc_ros);
-	cudaFree(pc_ptr);
+	checkCudaError( cudaFree(pc_ptr) );
 
 	// std::cout << "num_blocks = " << num_blocks << std::endl;
 	// std::cout << "threads_per_block = " << threads_per_block << std::endl;
