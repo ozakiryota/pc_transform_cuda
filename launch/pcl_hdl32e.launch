@@ -14,7 +14,7 @@
 	<!-- main -->
 	<node pkg="pc_transform_cuda" type="pc_transform_pcl" name="pc_transform_pcl" output="screen">
 		<remap from="/point_cloud" to="/velodyne_points"/>
-		<remap from="/point_cloud/transformed" to="/velodyne_points/cuda_transformed"/>
+		<remap from="/point_cloud/transformed" to="/velodyne_points/pcl_transformed"/>
 		<param name="x_m" type="double" value="1.0"/>
 		<param name="y_m" type="double" value="2.0"/>
 		<param name="z_m" type="double" value="3.0"/>

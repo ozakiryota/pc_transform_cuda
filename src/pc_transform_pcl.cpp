@@ -15,32 +15,32 @@ class PcTransform{
 		/*publisher*/
 		ros::Publisher pub_;
 		/*parameter*/
-		double x_m_, y_m_, z_m_;
-		double r_deg_, p_deg_, y_deg_;
+		float x_m_, y_m_, z_m_;
+		float r_deg_, p_deg_, y_deg_;
 
 	public:
 		PcTransform();
 		void callbackPC(const sensor_msgs::PointCloud2ConstPtr& msg);
 		void transformPC(pcl::PointCloud<pcl::PointXYZI>::Ptr pc);
 		void publication(pcl::PointCloud<pcl::PointXYZI>::Ptr pc);
-		double degToRad(double deg);
+		float degToRad(float deg);
 };
 
 PcTransform::PcTransform()
 	: nh_private_("~")
 {
 	/*parameter*/
-	nh_private_.param("x_m", x_m_, 0.0);
+	nh_private_.param("x_m", x_m_, float(0.0));
 	std::cout << "x_m_ = " << x_m_ << std::endl;
-	nh_private_.param("y_m", y_m_, 0.0);
+	nh_private_.param("y_m", y_m_, float(0.0));
 	std::cout << "y_m_ = " << y_m_ << std::endl;
-	nh_private_.param("z_m", z_m_, 0.0);
+	nh_private_.param("z_m", z_m_, float(0.0));
 	std::cout << "z_m_ = " << z_m_ << std::endl;
-	nh_private_.param("r_deg", r_deg_, 0.0);
+	nh_private_.param("r_deg", r_deg_, float(0.0));
 	std::cout << "r_deg_ = " << r_deg_ << std::endl;
-	nh_private_.param("p_deg", p_deg_, 0.0);
+	nh_private_.param("p_deg", p_deg_, float(0.0));
 	std::cout << "p_deg_ = " << p_deg_ << std::endl;
-	nh_private_.param("y_deg", y_deg_, 0.0);
+	nh_private_.param("y_deg", y_deg_, float(0.0));
 	std::cout << "y_deg_ = " << y_deg_ << std::endl;
 	/*subscriber*/
 	sub_ = nh_.subscribe("/point_cloud", 1, &PcTransform::callbackPC, this);
@@ -62,14 +62,6 @@ void PcTransform::callbackPC(const sensor_msgs::PointCloud2ConstPtr &msg)
 
 void PcTransform::transformPC(pcl::PointCloud<pcl::PointXYZI>::Ptr pc)
 {
-	// Eigen::Quaternionf rotation =
-	// 	Eigen::AngleAxisf(degToRad(r_deg_), Eigen::Vector3f::UnitX())
-    // 	* Eigen::AngleAxisf(degToRad(p_deg_), Eigen::Vector3f::UnitY())
-    // 	* Eigen::AngleAxisf(degToRad(y_deg_), Eigen::Vector3f::UnitZ());
-	// Eigen::Vector3f offset(x_m_, y_m_, z_m_);
-
-	// pcl::transformPointCloud(*pc, *pc, offset, rotation);
-
 	Eigen::Affine3f transformatoin = pcl::getTransformation(x_m_, y_m_, z_m_, degToRad(r_deg_), degToRad(p_deg_), degToRad(y_deg_));
 	pcl::transformPointCloud(*pc, *pc, transformatoin);
 }
@@ -81,9 +73,9 @@ void PcTransform::publication(pcl::PointCloud<pcl::PointXYZI>::Ptr pc)
     pub_.publish(ros_pc);
 }
 
-double PcTransform::degToRad(double deg)
+float PcTransform::degToRad(float deg)
 {
-	double rad = deg / 180.0 * M_PI;
+	float rad = deg / 180.0 * M_PI;
 	rad = atan2(sin(rad), cos(rad));
 	return rad;
 }

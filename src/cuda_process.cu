@@ -1,40 +1,52 @@
-#include <stdio.h>
 #include <iostream>
-
-#include "cuda_process.h"
+#include <sensor_msgs/PointCloud2.h>
+#include <sensor_msgs/point_field_conversion.h>
 
 typedef struct{
-	double x;
-	double y;
-	double z;
+	float x;
+	float y;
+	float z;
 }Point;
 
 typedef struct{
-	double m00, m10, m20;
-	double m01, m11, m21;
-	double m02, m12, m22;
+	float m00, m10, m20,
+		m01, m11, m21,
+		m02, m12, m22;
 }Mat;
 
-void pcRosToPtr(const sensor_msgs::PointCloud& pc_ros, Point* pc_ptr){
-	for(size_t i = 0; i < pc_ros.points.size(); i++){
-		pc_ptr[i].x = pc_ros.points[i].x;
-		pc_ptr[i].y = pc_ros.points[i].y;
-		pc_ptr[i].z = pc_ros.points[i].z;
+void pcRosToPtr(const sensor_msgs::PointCloud2& pc_ros, Point* pc_ptr){
+	int x_idx, y_idx, z_idx;
+	for(size_t i = 0; i < pc_ros.fields.size(); ++i){
+		if(pc_ros.fields[i].name == "x")	x_idx = i;
+		else if(pc_ros.fields[i].name == "y")	y_idx = i;
+		else if(pc_ros.fields[i].name == "z")	z_idx = i;
+	}
+	int x_offset = pc_ros.fields[x_idx].offset;
+	int y_offset = pc_ros.fields[y_idx].offset;
+	int z_offset = pc_ros.fields[z_idx].offset;
+	uint8_t x_datatype = pc_ros.fields[x_idx].datatype;
+	uint8_t y_datatype = pc_ros.fields[y_idx].datatype;
+	uint8_t z_datatype = pc_ros.fields[z_idx].datatype;
+
+	for (size_t i = 0; i < pc_ros.height * pc_ros.width; ++i){
+		pc_ptr[i].x = sensor_msgs::readPointCloud2BufferValue<float>(&pc_ros.data[i * pc_ros.point_step + x_offset], x_datatype);
+		pc_ptr[i].y = sensor_msgs::readPointCloud2BufferValue<float>(&pc_ros.data[i * pc_ros.point_step + y_offset], y_datatype);
+		pc_ptr[i].z = sensor_msgs::readPointCloud2BufferValue<float>(&pc_ros.data[i * pc_ros.point_step + z_offset], z_datatype);
 	}
 }
 
-double degToRad(double deg)
+float degToRad(float deg)
 {
-	double rad = deg / 180.0 * M_PI;
+	float rad = deg / 180.0 * M_PI;
 	rad = atan2(sin(rad), cos(rad));
 	return rad;
 }
 
-Mat getRotMatrix(double r_deg, double p_deg, double y_deg)
+Mat getRotMatrix(float r_deg, float p_deg, float y_deg)
 {
-	double r_rad = degToRad(r_deg);
-	double p_rad = degToRad(p_deg);
-	double y_rad = degToRad(y_deg);
+	float r_rad = degToRad(r_deg);
+	float p_rad = degToRad(p_deg);
+	float y_rad = degToRad(y_deg);
 
 	Mat rot;
 
@@ -54,7 +66,7 @@ Mat getRotMatrix(double r_deg, double p_deg, double y_deg)
 }
 
 __global__
-void transformPcCuda(Point* pc_ptr, size_t num_points, double x_m, double y_m, double z_m, Mat rot)
+void transformPcCuda(Point* pc_ptr, size_t num_points, float x_m, float y_m, float z_m, Mat rot)
 {
 	size_t index = threadIdx.x + blockIdx.x * blockDim.x;
 	size_t grid_stride = gridDim.x * blockDim.x;
@@ -68,15 +80,15 @@ void transformPcCuda(Point* pc_ptr, size_t num_points, double x_m, double y_m, d
 	}
 }
 
-void pcPtrToRos(Point* pc_ptr, sensor_msgs::PointCloud& pc_ros){
-	for(size_t i = 0; i < pc_ros.points.size(); i++){
-		pc_ros.points[i].x = pc_ptr[i].x;
-		pc_ros.points[i].y = pc_ptr[i].y;
-		pc_ros.points[i].z = pc_ptr[i].z;
+void pcPtrToRos(Point* pc_ptr, sensor_msgs::PointCloud2& pc_ros){
+	for(size_t i = 0; i < pc_ros.height * pc_ros.width; ++i){
+		memcpy(&pc_ros.data[i * pc_ros.point_step + pc_ros.fields[0].offset], &pc_ptr[i].x, sizeof(float));
+		memcpy(&pc_ros.data[i * pc_ros.point_step + pc_ros.fields[1].offset], &pc_ptr[i].y, sizeof(float));
+		memcpy(&pc_ros.data[i * pc_ros.point_step + pc_ros.fields[2].offset], &pc_ptr[i].z, sizeof(float));
 	}
 }
 
-void transformPc(sensor_msgs::PointCloud& pc_ros, double x_m, double y_m, double z_m, double r_deg, double p_deg, double y_deg)
+void transformPc(sensor_msgs::PointCloud2& pc_ros, float x_m, float y_m, float z_m, float r_deg, float p_deg, float y_deg)
 {
 	/*device query*/
 	int device_id;
@@ -85,7 +97,8 @@ void transformPc(sensor_msgs::PointCloud& pc_ros, double x_m, double y_m, double
 	cudaDeviceGetAttribute(&num_sm, cudaDevAttrMultiProcessorCount, device_id);
 
 	/*memory setting*/
-	int bytes = pc_ros.points.size() * sizeof(Point);
+	int num_points = pc_ros.height * pc_ros.width;
+	int bytes = num_points * sizeof(Point);
 	Point* pc_ptr;
 	cudaMallocManaged(&pc_ptr, bytes);
 	cudaMemPrefetchAsync(pc_ptr, bytes, device_id);
@@ -93,18 +106,19 @@ void transformPc(sensor_msgs::PointCloud& pc_ros, double x_m, double y_m, double
 	/*cpu*/
 	pcRosToPtr(pc_ros, pc_ptr);
 
-	/*gpu*/
+	// /*gpu*/
 	int num_blocks = num_sm * 32;
 	int threads_per_block = 1024;
-	transformPcCuda<<<num_blocks, threads_per_block>>>(pc_ptr, pc_ros.points.size(), x_m, y_m, z_m, getRotMatrix(r_deg, p_deg, y_deg));
-
-	/*cpu*/
+	transformPcCuda<<<num_blocks, threads_per_block>>>(pc_ptr, num_points, x_m, y_m, z_m, getRotMatrix(r_deg, p_deg, y_deg));
 	cudaDeviceSynchronize();
+
+	// /*cpu*/
 	cudaMemPrefetchAsync(pc_ptr, bytes, cudaCpuDeviceId);
 	pcPtrToRos(pc_ptr, pc_ros);
 	cudaFree(pc_ptr);
 
 	// std::cout << "num_blocks = " << num_blocks << std::endl;
 	// std::cout << "threads_per_block = " << threads_per_block << std::endl;
-	// std::cout << "pc_ros.points.size() = " << pc_ros.points.size() << std::endl;
+	// std::cout << "num_blocks * threads_per_block = " << num_blocks * threads_per_block << std::endl;
+	// std::cout << "num_points = " << num_points << std::endl;
 }
