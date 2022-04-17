@@ -33,3 +33,6 @@ cd pc_transform_cuda/docker
 ```bash
 roslaunch pc_transform_cuda cuda_hdl32e.launch
 ```
+
+## Related repository
+* [ozakiryota/dummy_msg_publication](https://github.com/ozakiryota/dummy_msg_publication)
